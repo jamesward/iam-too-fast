@@ -19,14 +19,11 @@ gcloud projects add-iam-policy-binding $project \
 
 declare name="test-$(cat /dev/urandom|tr -dc 'a-z0-9'|fold -w 4|head -n 1)"
 
-declare email=$(gcloud iam service-accounts create $name \
-    --display-name="$name" \
-    --project=$project \
-    --format="get(email)")
+declare email=$name@$project.iam.gserviceaccount.com
 
-#echo "Trying to list compute instances, but this should fail"
-#gcloud compute instances list \
-#    --impersonate-service-account=$email
+echo "Creating service account $email"
+gcloud iam service-accounts create $name \
+    --display-name="$name"
 
 echo "Giving the service account the compute.viewer role"
 gcloud projects add-iam-policy-binding $project \
@@ -34,21 +31,25 @@ gcloud projects add-iam-policy-binding $project \
     --role=roles/compute.viewer \
     --no-user-output-enabled --quiet
 
-echo "Deploying an app on Cloud Run that needs the newly granted role"
-gcloud run deploy $name \
-    --project=$project \
-    --platform=managed \
-    --region=us-central1 \
-    --image=gcr.io/cr-demo-235923/gce-list \
-    --allow-unauthenticated \
-    --memory=512Mi \
-    --service-account=$email
-
-echo "Trying to use the new role via gcloud"
+echo "Using the new role to list compute instances"
 gcloud compute instances list \
     --impersonate-service-account=$email
 
-readonly endpoint=$(gcloud run services describe $name --platform=managed --region=us-central1 --project=$project --format="value(status.address.url)")
+echo "Deleting service account $email"
+gcloud iam service-accounts delete $email \
+    --no-user-output-enabled --quiet
 
-echo "Trying to use the new role via Cloud Run"
-curl $endpoint
+echo "Recreating service account $email"
+gcloud iam service-accounts create $name \
+    --display-name="$name"
+
+echo "Giving the service account the compute.viewer role"
+gcloud projects add-iam-policy-binding $project \
+    --member=serviceAccount:$email \
+    --role=roles/compute.viewer \
+    --no-user-output-enabled --quiet
+
+echo "Trying to use the new role via gcloud"
+gcloud compute instances list \
+    --impersonate-service-account=$email \
+
